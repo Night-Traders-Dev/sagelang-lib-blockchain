@@ -1,29 +1,19 @@
 # blockchain
 
 ## Purpose
-[Describe the purpose of this SageLang library module.]
+Core blockchain development framework for SageLang. Provides primitives for building decentralized applications, contracts, and custom chains.
 
 ## Features
-- [Feature 1]
-- [Feature 2]
-
-## Installation
-Add as a submodule to your SageLang project:
-```bash
-git submodule add <repository-url> core/lib/blockchain
-```
-
-## API Documentation
-[Link to detailed API documentation]
+- **Consensus**: PoW and PoA consensus engines.
+- **Smart Contracts**: Contract definition, transaction, and state management.
+- **Storage**: Merkle trees, wallet management, and blockchain database (db).
 
 ## Usage Example
 ```sage
-import blockchain
-# Example usage...
+import blockchain.blockchain
+import blockchain.transaction
+
+let chain = Blockchain("mainnet")
+let tx = Transaction(sender, receiver, amount)
+chain.add_transaction(tx)
 ```
-
-## Contributing
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
-
-## License
-MIT (or maintain main project license)
