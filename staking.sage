@@ -110,12 +110,12 @@ if action == "unstake":
                 
             let diff = now - s["last_claim"]
             let reward = 0.0
-            if diff >= 86400:
+            if diff >= interval:
                 let intervals = 0
-                while diff >= 86400:
+                while diff >= interval:
                     intervals = intervals + 1
-                    diff = diff - 86400
-                reward = principal * 0.05 * (intervals / 365.0)
+                    diff = diff - interval
+                reward = principal * 0.05 * (intervals * interval / (365.0 * 86400.0))
                 
             dict_delete(state["stakes"], sender)
             state["total_staked"] = state["total_staked"] - principal

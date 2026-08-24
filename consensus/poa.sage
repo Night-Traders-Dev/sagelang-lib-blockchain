@@ -1,4 +1,5 @@
 # lib/blockchain/consensus/poa.sage
+# Proof of Authority: blocks must be sealed (signed) by an authority.
 
 from blockchain.consensus.base import Consensus
 import blockchain.block as block_mod
@@ -7,34 +8,47 @@ import blockchain.crypto as bc_crypto
 class PoAConsensus(Consensus):
     proc init(blockchain, authorities):
         self.blockchain = blockchain
-        self.authorities = authorities # List of authorized public keys
+        self.authorities = authorities # List of authorized signer ids
         self.slashed = {} # Track slashed authorities
 
+    proc is_authority(address):
+        for auth in self.authorities:
+            if auth == address:
+                return true
+        return false
+
     proc validate_block(block):
-        # In PoA, we check if the block is signed by an authority
-        if not dict_has(block, "signature"):
-            print "PoA Error: Block missing signature"
+        # Accept raw dicts too (e.g. arriving over p2p)
+        if type(block) == "dict":
+            block = self.blockchain.to_block(block)
+            if block == nil:
+                print "PoA Error: malformed block"
+                return false
+
+        # Genesis exemption: the genesis block has no authority signature.
+        if block.index == 0 or block.previous_hash == "0":
+            return true
+
+        let signer = block.signer
+        if signer == nil:
+            print "PoA Error: Block missing signer"
             return false
-            
-        let signer = block["signer"]
-        
+
         # Check if signer is slashed
         if dict_has(self.slashed, signer):
             print "PoA Error: Signer " + signer + " has been slashed!"
             return false
 
-        let is_auth = false
-        for auth in self.authorities:
-            if auth == signer:
-                is_auth = true
-                break
-        
-        if not is_auth:
+        if not self.is_authority(signer):
             print "PoA Error: Signer " + signer + " is not an authority"
             return false
-            
+
+        if block.signature == nil:
+            print "PoA Error: Block missing signature"
+            return false
+
         # Verify signature of the block hash
-        return crypto.verify(block.hash, block["signature"], signer)
+        return bc_crypto.verify(block.hash, block.signature, signer)
 
     proc seal_block(transactions, miner_address):
         # Check if miner is an authority
@@ -42,13 +56,7 @@ class PoAConsensus(Consensus):
             print "PoA Error: Miner is slashed"
             return nil
 
-        let is_auth = false
-        for auth in self.authorities:
-            if auth == miner_address:
-                is_auth = true
-                break
-        
-        if not is_auth:
+        if not self.is_authority(miner_address):
             print "PoA Error: Miner is not an authority"
             return nil
 
@@ -56,18 +64,20 @@ class PoAConsensus(Consensus):
         let prev_hash = "0"
         if block_height > 0:
             prev_hash = self.blockchain.chain[block_height - 1].hash
-            
+
         let block = block_mod.Block(block_height, transactions, prev_hash, 0)
-        # In PoA, difficulty is 0, no mining needed
-        
-        # Automatic Slashing for Equivocation (Double Signing)
-        # In a real network, this would check if another block exists at this height
-        # signed by the same miner. For simulation, we check local chain.
+
+        # Automatic Slashing for Equivocation (Double Signing):
+        # reject if this authority already sealed a block at this height.
         for b in self.blockchain.chain:
-            if b.index == block_height and dict_has(b, "signer") and b["signer"] == miner_address:
+            if b.index == block_height and b.signer != nil and b.signer == miner_address:
                 print "Equivocation detected! Slashing " + miner_address
                 self.slash(miner_address)
                 return nil
+
+        # Seal: sign the block hash as the miner identity
+        block.signer = miner_address
+        block.signature = bc_crypto.sign(block.hash, miner_address)
 
         return block
 

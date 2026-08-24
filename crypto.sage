@@ -1,14 +1,20 @@
 # lib/blockchain/crypto.sage
 # Frontier Cryptography for Sage Blockchain
 
-import ffi
+# The ffi module is native in the C toolchain; the self-hosted runtime may
+# not provide it. Fall back to the simulated scheme when unavailable.
+let ffi_mod = nil
+try:
+    import ffi as ffi_mod
+catch e:
+    ffi_mod = nil
 import io
 
 # We assume a shared library 'libsage_crypto.so' exists with ed25519 support.
 # If not present, we fallback to simulated secure crypto.
 let lib = nil
-if io.exists("libsage_crypto.so"):
-    lib = ffi.open("libsage_crypto.so")
+if ffi_mod != nil and io.exists("libsage_crypto.so"):
+    lib = ffi_mod.open("libsage_crypto.so")
 
 proc generate_keypair():
     if lib:

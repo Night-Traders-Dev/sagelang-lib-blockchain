@@ -76,6 +76,23 @@ class StateTrie:
             return current["value"]
         return nil
 
+    proc serialize_node(node):
+        let parts = ""
+        if node["type"] == "leaf":
+            return "L(" + str(node["value"]) + ")"
+        let keys = dict_keys(node["children"])
+        # insertion sort for deterministic child order
+        for i in range(1, len(keys)):
+            let key = keys[i]
+            let j = i - 1
+            while j >= 0 and keys[j] > key:
+                keys[j + 1] = keys[j]
+                j = j - 1
+            keys[j + 1] = key
+        for k in keys:
+            parts = parts + k + ":" + self.serialize_node(node["children"][k]) + ";"
+        return "B(" + parts + ")"
+
     proc get_root_hash():
-        # Temporary flat hash to avoid recursion depth issues
-        return hash.sha256_hex("state_root_proxy")
+        # Commit to the full trie contents (deterministic serialization)
+        return hash.sha256_hex(self.serialize_node(self.root))

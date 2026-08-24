@@ -3,6 +3,11 @@
 
 import crypto.hash as hash
 import blockchain.crypto as bc_crypto
+import crypto.rand as rand
+
+# Process-wide counter mixed into wallet seeding so wallets created within
+# the same clock tick never share a mnemonic.
+let _wallet_entropy_counter = 0
 
 class Wallet:
     proc init(mnemonic=nil):
@@ -20,12 +25,15 @@ class Wallet:
         self.private_key = self.addresses[0]["private_key"]
 
     proc generate_mnemonic():
-        # Simulation: pick 12 random words from a small list
+        # Simulation: pick 12 random words. Seeded from a high-resolution
+        # clock plus a monotonically increasing counter so concurrent or
+        # rapid successive creations always diverge.
+        _wallet_entropy_counter = _wallet_entropy_counter + 1
         let words = ["sage", "chain", "green", "leaf", "growth", "smart", "contract", "node", "decent", "block", "peer", "secure"]
+        let rng = rand.create(int(clock() * 1000000.0) + _wallet_entropy_counter * 7919)
         let result = ""
         for i in range(12):
-            # In real Sage, we'd use a better random source
-            let idx = tonumber(str(clock() * 1000)) % 12
+            let idx = rand.next_bounded(rng, len(words))
             result = result + words[idx]
             if i < 11:
                 result = result + " "
@@ -34,9 +42,13 @@ class Wallet:
     proc derive_address(index):
         # HD Derivation: Hash(seed + index)
         let priv_key = hash.sha256_hex(self.seed + str(index))
-        let pub_key = hash.sha256_hex(priv_key)
+        # In the simulated crypto scheme the public key equals the private
+        # key material (see blockchain/crypto.sage fallback); the address is
+        # derived by hashing it so verify_transaction can reconstruct the
+        # sender address from the transmitted public key.
+        let pub_key = priv_key
         # Address is first 40 chars of public key hash
-        let addr = "0x" + pub_key[:40]
+        let addr = "0x" + hash.sha256_hex(pub_key)[:40]
         let w_obj = {"address": addr, "private_key": priv_key, "public_key": pub_key, "index": index}
         push(self.addresses, w_obj)
         return addr
@@ -74,8 +86,8 @@ class Wallet:
             amount = tx.amount
             nonce = tx.nonce
             chain_id = tx.chain_id
-            if dict_has(tx, "type"):
-                tx_type = tx["type"]
+            if hasattr(tx, "type"):
+                tx_type = tx.type
             timestamp = tx.timestamp
 
         return str(sender) + ":" + str(receiver) + ":" + str(amount) + ":" + str(nonce) + ":" + str(chain_id) + ":" + str(tx_type) + ":" + str(timestamp)
@@ -105,5 +117,5 @@ class Wallet:
             tx_dict["signature"] = signature
             tx_dict["public_key"] = pub
         else:
-            tx["signature"] = signature
-            tx["public_key"] = pub
+            tx.signature = signature
+            tx.public_key = pub

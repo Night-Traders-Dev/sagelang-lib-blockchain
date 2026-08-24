@@ -10,6 +10,7 @@ import blockchain.crypto as bc_crypto
 import blockchain.merkle as merkle
 import blockchain.net as p2p
 import blockchain.events as event_mod
+import io
 import thread
 import crypto.hash as hash
 
@@ -60,6 +61,10 @@ class Blockchain:
             block.hash = block_dict["hash"]
             if dict_has(block_dict, "state_root"):
                 block.state_root = block_dict["state_root"]
+            if dict_has(block_dict, "signer"):
+                block.signer = block_dict["signer"]
+            if dict_has(block_dict, "signature"):
+                block.signature = block_dict["signature"]
             
             push(self.chain, block)
             self.last_block_time = block.timestamp
@@ -310,15 +315,22 @@ class Blockchain:
 
         if not dict_has(tx, "type"):
             if sender != "" and receiver != nil and dict_has(tx, "amount"):
-                let s_bal = self.db.get_account_balance(sender)
                 let r_bal = self.db.get_account_balance(receiver)
-                if s_bal >= tx["amount"]:
-                    self.db.save_account_balance(sender, s_bal - tx["amount"])
+                if sender == "System":
+                    # System transactions mint new supply
                     self.db.save_account_balance(receiver, r_bal + tx["amount"])
                 else:
-                    print "Invalid transfer: insufficient funds for " + sender
-                    return {"valid": false, "fees": 0.0}
+                    let s_bal = self.db.get_account_balance(sender)
+                    if s_bal >= tx["amount"]:
+                        self.db.save_account_balance(sender, s_bal - tx["amount"])
+                        self.db.save_account_balance(receiver, r_bal + tx["amount"])
+                    else:
+                        print "Invalid transfer: insufficient funds for " + sender
+                        return {"valid": false, "fees": 0.0}
         else:
+            if tx["type"] != "deploy" and tx["type"] != "call":
+                print "Rejected transaction: unknown type " + str(tx["type"])
+                return {"valid": false, "fees": 0.0}
             if tx["type"] == "deploy":
                 let addr = tx["contract_address"]
                 let contract = contract_mod.Contract(tx["source"])
@@ -410,6 +422,10 @@ class Blockchain:
             block.hash = block_dict["hash"]
         if dict_has(block_dict, "state_root"):
             block.state_root = block_dict["state_root"]
+        if dict_has(block_dict, "signer"):
+            block.signer = block_dict["signer"]
+        if dict_has(block_dict, "signature"):
+            block.signature = block_dict["signature"]
         return block
 
     proc is_chain_valid():

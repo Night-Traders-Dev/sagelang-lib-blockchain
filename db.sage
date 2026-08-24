@@ -4,6 +4,22 @@ import io
 import json
 import sys
 
+# mkdir(2) only creates one level; walk each component so a nested
+# base_dir like data/chains/foo works regardless of what exists.
+proc ensure_dir(path):
+    if io.exists(path):
+        return
+    let parts = split(path, "/")
+    let cur = ""
+    for p in parts:
+        if p == "":
+            cur = cur + "/"
+            continue
+        cur = cur + p
+        if not io.exists(cur):
+            io.mkdir(cur)
+        cur = cur + "/"
+
 class LedgerDB:
     proc init(base_dir):
         self.base_dir = base_dir
@@ -16,20 +32,13 @@ class LedgerDB:
         self.ensure_dirs()
 
     proc ensure_dirs():
-        if not io.exists(self.base_dir):
-            io.mkdir(self.base_dir)
-        if not io.exists(self.height_dir):
-            io.mkdir(self.height_dir)
-        if not io.exists(self.hash_dir):
-            io.mkdir(self.hash_dir)
-        if not io.exists(self.account_dir):
-            io.mkdir(self.account_dir)
-        if not io.exists(self.contract_dir):
-            io.mkdir(self.contract_dir)
-        if not io.exists(self.tx_history_dir):
-            io.mkdir(self.tx_history_dir)
-        if not io.exists(self.tx_dir):
-            io.mkdir(self.tx_dir)
+        ensure_dir(self.base_dir)
+        ensure_dir(self.height_dir)
+        ensure_dir(self.hash_dir)
+        ensure_dir(self.account_dir)
+        ensure_dir(self.contract_dir)
+        ensure_dir(self.tx_history_dir)
+        ensure_dir(self.tx_dir)
 
     proc save_block(block):
         let height = block.index

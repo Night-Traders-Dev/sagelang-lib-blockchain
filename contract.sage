@@ -13,7 +13,7 @@ class Contract:
             self.bytecode = vm.serialize(ptr)
         self.state = {}
 
-    proc execute(args, context, call_stack):
+    proc execute(args, context, call_stack = nil):
         let ptr = vm.deserialize(self.bytecode)
         if ptr == nil:
             return nil
