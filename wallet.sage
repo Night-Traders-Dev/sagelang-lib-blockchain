@@ -3,53 +3,44 @@
 
 import crypto.hash as hash
 import blockchain.crypto as bc_crypto
-import crypto.rand as rand
-
-# Process-wide counter mixed into wallet seeding so wallets created within
-# the same clock tick never share a mnemonic.
-let _wallet_entropy_counter = 0
 
 class Wallet:
     proc init(mnemonic=nil):
-        if mnemonic == nil:
-            self.mnemonic = self.generate_mnemonic()
-        else:
+        if not bc_crypto.is_available():
+            raise "Secure wallet is unavailable: a verified Ed25519 backend is required"
+        if mnemonic != nil:
+            let restored = bc_crypto.keypair_from_private(mnemonic)
             self.mnemonic = mnemonic
-        
-        # Derive master seed from mnemonic
-        self.seed = hash.sha256_hex(self.mnemonic)
+        else:
+            let generated = bc_crypto.generate_keypair()
+            self.mnemonic = generated["private"]
+        self.seed = nil
         self.addresses = []
-        # Generate first address by default
         self.derive_address(0)
         self.address = self.addresses[0]["address"]
         self.private_key = self.addresses[0]["private_key"]
 
     proc generate_mnemonic():
-        # Simulation: pick 12 random words. Seeded from a high-resolution
-        # clock plus a monotonically increasing counter so concurrent or
-        # rapid successive creations always diverge.
-        _wallet_entropy_counter = _wallet_entropy_counter + 1
-        let words = ["sage", "chain", "green", "leaf", "growth", "smart", "contract", "node", "decent", "block", "peer", "secure"]
-        let rng = rand.create(int(clock() * 1000000.0) + _wallet_entropy_counter * 7919)
-        let result = ""
-        for i in range(12):
-            let idx = rand.next_bounded(rng, len(words))
-            result = result + words[idx]
-            if i < 11:
-                result = result + " "
-        return result
+        if self.mnemonic == nil:
+            raise "Secure wallet is unavailable: no generated key material"
+        return self.mnemonic
 
     proc derive_address(index):
-        # HD Derivation: Hash(seed + index)
-        let priv_key = hash.sha256_hex(self.seed + str(index))
-        # In the simulated crypto scheme the public key equals the private
-        # key material (see blockchain/crypto.sage fallback); the address is
-        # derived by hashing it so verify_transaction can reconstruct the
-        # sender address from the transmitted public key.
-        let pub_key = priv_key
-        # Address is first 40 chars of public key hash
+        if not bc_crypto.is_available():
+            raise "Secure wallet is unavailable: a verified Ed25519 backend is required"
+        if index != 0:
+            raise "HD address derivation is unavailable in the configured crypto backend"
+        if len(self.addresses) > 0:
+            return self.addresses[0]["address"]
+        let keypair = bc_crypto.keypair_from_private(self.mnemonic)
+        let priv_key = keypair["private"]
+        let pub_key = keypair["public"]
         let addr = "0x" + hash.sha256_hex(pub_key)[:40]
-        let w_obj = {"address": addr, "private_key": priv_key, "public_key": pub_key, "index": index}
+        let w_obj = {}
+        w_obj["address"] = addr
+        w_obj["private_key"] = priv_key
+        w_obj["public_key"] = pub_key
+        w_obj["index"] = index
         push(self.addresses, w_obj)
         return addr
 
@@ -99,19 +90,12 @@ class Wallet:
             tx_dict = tx.to_dict()
 
         let tx_sender = tx_dict["sender"]
-        let priv = nil
-        let pub = nil
-        for w in self.addresses:
-            if w["address"] == tx_sender:
-                priv = w["private_key"]
-                pub = w["public_key"]
-                break
-
-        if priv == nil:
+        let msg = self.transaction_message(tx_dict)
+        if tx_sender != self.address:
             print "Error: Wallet does not own sender address " + tx_sender
             return
-
-        let msg = self.transaction_message(tx_dict)
+        let priv = self.private_key
+        let pub = self.addresses[0]["public_key"]
         let signature = bc_crypto.sign(msg, priv)
         if is_dict:
             tx_dict["signature"] = signature

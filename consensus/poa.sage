@@ -10,6 +10,9 @@ class PoAConsensus(Consensus):
         self.blockchain = blockchain
         self.authorities = authorities # List of authorized signer ids
         self.slashed = {} # Track slashed authorities
+        self.authority_keys = {}
+        for authority in authorities:
+            self.authority_keys[authority] = bc_crypto.generate_keypair()
 
     proc is_authority(address):
         for auth in self.authorities:
@@ -47,8 +50,13 @@ class PoAConsensus(Consensus):
             print "PoA Error: Block missing signature"
             return false
 
+        if not dict_has(self.authority_keys, signer):
+            print "PoA Error: Signer has no registered key"
+            return false
+
         # Verify signature of the block hash
-        return bc_crypto.verify(block.hash, block.signature, signer)
+        let keypair = self.authority_keys[signer]
+        return bc_crypto.verify(block.hash, block.signature, keypair["public"])
 
     proc seal_block(transactions, miner_address):
         # Check if miner is an authority
@@ -75,9 +83,10 @@ class PoAConsensus(Consensus):
                 self.slash(miner_address)
                 return nil
 
-        # Seal: sign the block hash as the miner identity
+        # Seal: sign the block hash with the registered authority key
+        let keypair = self.authority_keys[miner_address]
         block.signer = miner_address
-        block.signature = bc_crypto.sign(block.hash, miner_address)
+        block.signature = bc_crypto.sign(block.hash, keypair["private"])
 
         return block
 
@@ -96,6 +105,7 @@ class PoAConsensus(Consensus):
             if a == address:
                 return
         push(self.authorities, address)
+        self.authority_keys[address] = bc_crypto.generate_keypair()
 
     proc remove_authority(address):
         let new_auths = []

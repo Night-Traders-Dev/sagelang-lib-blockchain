@@ -1,45 +1,40 @@
 # lib/blockchain/crypto.sage
-# Frontier Cryptography for Sage Blockchain
+import ed25519 as native_crypto
 
-# The ffi module is native in the C toolchain; the self-hosted runtime may
-# not provide it. Fall back to the simulated scheme when unavailable.
-let ffi_mod = nil
-try:
-    import ffi as ffi_mod
-catch e:
-    ffi_mod = nil
-import io
+proc is_available():
+    return native_crypto != nil
 
-# We assume a shared library 'libsage_crypto.so' exists with ed25519 support.
-# If not present, we fallback to simulated secure crypto.
-let lib = nil
-if ffi_mod != nil and io.exists("libsage_crypto.so"):
-    lib = ffi_mod.open("libsage_crypto.so")
+proc require_backend():
+    if not is_available():
+        raise "Secure blockchain crypto is unavailable: a verified Ed25519 backend is required"
 
 proc generate_keypair():
-    if lib:
-        # Native Ed25519 key generation
-        let pub = ffi.call(lib, "ed25519_gen_pub", "ptr", [])
-        let priv = ffi.call(lib, "ed25519_gen_priv", "ptr", [])
-        return {"public": pub, "private": priv}
-    else:
-        # Secure simulation for development
-        import crypto.hash as hash
-        let seed = str(clock()) + str(hash.sha256_hex("entropy-source"))
-        let priv = hash.sha256_hex(seed + "priv")
-        let pub = priv
-        return {"public": pub, "private": priv}
+    require_backend()
+    let pair = native_crypto.generate_keypair()
+    if pair == nil:
+        raise "Secure Ed25519 crypto backend returned an invalid key"
+    return pair
+
+proc keypair_from_private(private_key):
+    require_backend()
+    if private_key == nil:
+        raise "Secure Ed25519 crypto rejected a nil private key"
+    let pair = native_crypto.keypair_from_private(private_key)
+    if pair == nil:
+        raise "Secure Ed25519 crypto backend returned an invalid key"
+    return pair
 
 proc sign(message, private_key):
-    if lib:
-        return ffi.call(lib, "ed25519_sign", "string", [message, private_key])
-    else:
-        import crypto.hash as hash
-        return hash.sha256_hex(message + private_key)
+    require_backend()
+    if message == nil or private_key == nil:
+        raise "Secure Ed25519 crypto rejected nil signing input"
+    let signature = native_crypto.sign(message, private_key)
+    if signature == nil:
+        raise "Secure Ed25519 crypto backend failed to sign"
+    return signature
 
 proc verify(message, signature, public_key):
-    if lib:
-        return ffi.call(lib, "ed25519_verify", "int", [message, signature, public_key]) == 1
-    else:
-        import crypto.hash as hash
-        return hash.sha256_hex(message + public_key) == signature
+    require_backend()
+    if message == nil or signature == nil or public_key == nil:
+        return false
+    return native_crypto.verify(message, signature, public_key)
